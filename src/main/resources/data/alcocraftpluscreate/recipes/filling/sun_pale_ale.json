@@ -1,0 +1,23 @@
+{
+  "type": "create:filling",
+  "conditions": [
+    {
+      "type": "forge:mod_loaded",
+      "modid": "create"
+    }
+  ],
+  "ingredients": [
+    {
+      "item": "alcocraftplus:mug"
+    },
+    {
+      "fluid": "alcocraftpluscreate:sun_pale_ale",
+      "amount": 400
+    }
+  ],
+  "results": [
+    {
+      "item": "alcocraftplus:sun_pale_ale"
+    }
+  ]
+}

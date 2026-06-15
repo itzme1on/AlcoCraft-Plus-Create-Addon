@@ -1,0 +1,143 @@
+plugins {
+    id 'architectury-plugin' version '3.4-SNAPSHOT'
+    id 'dev.architectury.loom' version '1.7-SNAPSHOT'
+    id "com.hypherionmc.modutils.modpublisher" version "2.1.8"
+}
+
+base {
+    archivesName = project.mod_id
+}
+
+group = project.maven_group
+version = project.mod_version
+
+ext.changelogFor = { String v ->
+    def file = project.file("CHANGELOG.md")
+    if (!file.exists()) return ""
+    def body = []
+    def capturing = false
+    file.eachLine("UTF-8") { line ->
+        if (line ==~ /^##\s+.*/) {
+            if (capturing) capturing = false
+            else if (line.contains(v)) { capturing = true; return }
+        } else if (capturing) {
+            body << line
+        }
+    }
+    body.join("\n").trim()
+}
+
+ext.minecraftGameVersions = {
+    def parse = { String v ->
+        def parts = v.tokenize('.')
+        if (parts.size() < 2) throw new IllegalArgumentException("Version '${v}' must have at least major.minor")
+        [major: parts[0].toInteger(), minor: parts[1].toInteger(), patch: (parts.size() >= 3 ? parts[2].toInteger() : 0)]
+    }
+    try {
+        def min = parse(project.minecraft_min_version.toString())
+        def max = parse(project.minecraft_max_version.toString())
+        if (min.major != max.major || min.minor != max.minor || min.patch > max.patch) return [project.minecraft_version]
+        def result = []
+        for (int p = min.patch; p < max.patch; p++) result << (p == 0 ? "${min.major}.${min.minor}" : "${min.major}.${min.minor}.${p}")
+        return result.unique()
+    } catch (Exception e) {
+        return [project.minecraft_version]
+    }
+}()
+
+architectury {
+    forge()
+}
+
+loom {
+    forge {
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url "https://maven.parchmentmc.org" }
+    maven { url "https://maven.architectury.dev/" }
+    maven { url "https://maven.minecraftforge.net/" }
+    maven { url "https://api.modrinth.com/maven" }
+}
+
+dependencies {
+    minecraft "net.minecraft:minecraft:${project.minecraft_version}"
+    mappings loom.layered() {
+        officialMojangMappings()
+        parchment("org.parchmentmc.data:parchment-${project.minecraft_version}:${project.parchment_version}@zip")
+    }
+    forge "net.minecraftforge:forge:${project.minecraft_version}-${project.forge_version}"
+
+    modImplementation "dev.architectury:architectury-forge:${project.architectury_api_version}"
+
+    modImplementation "maven.modrinth:alcocraft:2.2.0+1.20.1"
+}
+
+java {
+    withSourcesJar()
+
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    it.options.release = 17
+}
+
+processResources {
+    def props = [
+            mod_id                    : project.mod_id,
+            mod_version               : project.mod_version,
+            mod_display_name          : project.mod_display_name,
+            mod_authors               : project.mod_authors,
+            mod_description           : project.mod_description,
+            forge_version_range       : project.forge_version_range,
+            forge_loader_version_range: project.forge_loader_version_range,
+            minecraft_version         : project.minecraft_version
+    ]
+
+    inputs.properties(props)
+
+    filesMatching("META-INF/mods.toml") {
+        expand(props)
+    }
+}
+
+publisher {
+    apiKeys {
+        modrinth System.getenv("MODRINTH_TOKEN")
+        curseforge System.getenv("CURSEFORGE_TOKEN")
+    }
+
+    setCurseID((project.findProperty("mod_curseforge_id") ?: "").toString())
+    setModrinthID((project.findProperty("mod_modrinth_id") ?: "").toString())
+
+    setVersionType((project.findProperty("release_channel") ?: "release").toString())
+
+    setChangelog(project.changelogFor(project.mod_version))
+
+    setProjectVersion("${project.mod_version}+${project.minecraft_version}")
+
+    setDisplayName("${project.mod_display_name} ${project.mod_version} (Forge ${project.minecraft_min_version})")
+
+    setGameVersions(*((project.ext.minecraftGameVersions as List).collect { it.toString() } as String[]))
+
+    setLoaders("forge")
+
+    setCurseEnvironment("both")
+
+    setArtifact(tasks.remapJar)
+
+    modrinthDepends {
+        required("alcocraft")
+        required("create")
+    }
+
+    curseDepends {
+        required("alcocraft")
+        required("create")
+    }
+}
